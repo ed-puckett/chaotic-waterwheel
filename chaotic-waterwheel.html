@@ -94,13 +94,123 @@ SOFTWARE.
         </div>
         <div id="config_display"></div>
     </div>
-    <div id="plot"></div>
-    <div id="output"></div>
+    <canvas id="canvas"></canvas>
 
     <script>
-        const input_el  = document.getElementById('input');
-        const plot_el   = document.getElementById('plot');
-        const output_el = document.getElementById('output');
+        const canvas_el = document.getElementById('canvas');
+
+        class Waterwheel {
+            static bucket_ring_radius_min = 100;    // length_units
+            static bucket_ring_radius_max = 10000;  // length_units
+
+            static bucket_count_min = 2;
+            static bucket_count_max = 100;
+
+            static inflow_jitter = 0.001;  // maximum lateral force per inflow mass
+
+            static fluid_density = 1;  // mass_units/volume_unit
+
+            static pixels_per_length_unit = 1;
+
+            static seconds_per_step = 0.01
+
+            static g = 1;  // length_units/second/second
+
+            constructor(
+                bucket_ring_radius,           // length_units
+                bucket_count,
+                bucket_capacity,              // volume_units
+                initial_inflow_rate,          // volume_units/second
+                initial_bucket_outflow_rate,  // volume_units/second
+                initial_wheel_friction,       // force/(radians/second)
+            ) {
+                if ( typeof bucket_ring_radius !== 'number' ||
+                     bucket_ring_radius < this.constructor.bucket_ring_radius_min ||
+                     bucket_ring_radius > this.constructor.bucket_ring_radius_max ) {
+                    throw new Error(`bucket_ring_radius must be a number in the range [${this.constructor.bucket_ring_radius_min}, ${this.constructor.bucket_ring_radius_max}]`);
+                }
+                if ( typeof bucket_count !== 'number' ||
+                     bucket_count < this.constructor.bucket_count_min ||
+                     bucket_count > this.constructor.bucket_count_max ) {
+                    throw new Error(`bucket_count must be a number in the range [${this.constructor.bucket_count_min}, ${this.constructor.bucket_count_max}]`);
+                }
+                if (typeof bucket_capacity !== 'number' || bucket_capacity <= 0) {
+                    throw new Error(`bucket_capacity must be a positive number`);
+                }
+                if (typeof initial_inflow_rate !== 'number' || initial_inflow_rate < 0) {
+                    throw new Error(`initial_inflow_rate must be a non-negative number`);
+                }
+                if (typeof initial_bucket_outflow_rate !== 'number' || initial_bucket_outflow_rate < 0) {
+                    throw new Error(`initial_bucket_outflow_rate must be a non-negative number`);
+                }
+                if (typeof initial_wheel_friction !== 'number' || initial_wheel_friction < 0) {
+                    throw new Error(`initial_wheel_friction must be a non-negative number`);
+                }
+
+                this._bucket_ring_radius     = bucket_ring_radius;
+                this._bucket_count           = bucket_count;
+                this._bucket_capacity        = bucket_capacity;
+                this._inflow_rate            = initial_inflow_rate;
+                this._bucket_outflow_rate    = initial_bucket_outflow_rate;
+                this._wheel_friction         = initial_wheel_friction;
+                this._wheel_angle            = 0;
+                this._wheel_angular_velocity = 0;
+                this._buckets                = [];
+
+                for (let i = 0; i < this._bucket_count; i++) {
+                    this._buckets.push({
+                        index: i,
+                        amount: 0,  // units of liquid
+                    });
+                }
+            }
+
+            get bucket_ring_radius     (){ return this._bucket_ring_radius; }
+            get bucket_count           (){ return this._bucket_count; }
+            get bucket_capacity        (){ return this._bucket_capacity; }
+            get inflow_rate            (){ return this._inflow_rate; }
+            get bucket_outflow_rate    (){ return this._bucket_outflow_rate; }
+            get wheel_friction         (){ return this._wheel_friction; }
+            get wheel_angle            (){ return this._wheel_angle; }
+            get wheel_angular_velocity (){ return this._wheel_angular_velocity; }
+
+            set inflow_rate (new_inflow_rate) {
+                if (typeof new_inflow_rate !== 'number' || new_inflow_rate < 0) {
+                    throw new Error(`new_inflow_rate must be a non-negative number`);
+                }
+                this._inflow_rate = new_inflow_rate;
+            }
+
+            set bucket_outflow_rate (new_bucket_outflow_rate) {
+                if (typeof new_bucket_outflow_rate !== 'number' || new_bucket_outflow_rate < 0) {
+                    throw new Error(`new_bucket_outflow_rate must be a non-negative number`);
+                }
+                this._bucket_outflow_rate = new_bucket_outflow_rate;
+            }
+
+            set wheel_friction (new_wheel_friction) {
+                if (typeof new_wheel_friction !== 'number' || new_wheel_friction < 0) {
+                    throw new Error(`new_wheel_friction must be a non-negative number`);
+                }
+                this._wheel_friction = new_wheel_friction;
+            }
+
+            reset() {
+                this._wheel_angle = 0;
+                this._wheel_angular_velocity = 0;
+                for (bucket of this._buckets) {
+                    bucket.amount = 0;
+                }
+            }
+
+            step() {
+                //!!!
+            }
+
+            render() {
+                //!!!
+            }
+        };
 
         const go_button    = document.getElementById('go');
         const pause_button = document.getElementById('pause');
