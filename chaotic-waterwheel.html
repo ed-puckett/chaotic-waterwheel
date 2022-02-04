@@ -94,7 +94,7 @@ SOFTWARE.
         </div>
         <div id="config_display"></div>
     </div>
-    <canvas id="canvas"></canvas>
+    <div id="canvas_container"></div>
 
     <script>
         const canvas_el = document.getElementById('canvas');
@@ -106,7 +106,7 @@ SOFTWARE.
             static bucket_count_min = 2;
             static bucket_count_max = 100;
 
-            static inflow_jitter = 0.001;  // maximum lateral force per inflow mass
+            static inflow_jitter = 0.001;  // maximum lateral force (+ or -) at top of bucket ring per inflow mass
 
             static fluid_density = 1;  // mass_units/volume_unit
 
@@ -116,14 +116,16 @@ SOFTWARE.
 
             static g = 1;  // length_units/second/second
 
-            constructor(
-                bucket_ring_radius,           // length_units
-                bucket_count,
-                bucket_capacity,              // volume_units
-                initial_inflow_rate,          // volume_units/second
-                initial_bucket_outflow_rate,  // volume_units/second
-                initial_wheel_friction,       // force/(radians/second)
-            ) {
+            constructor(initializers) {
+                const {
+                    bucket_ring_radius,           // length_units
+                    bucket_count,
+                    bucket_capacity,              // volume_units
+                    initial_inflow_rate,          // volume_units/second
+                    initial_bucket_outflow_rate,  // volume_units/second
+                    initial_wheel_friction,       // torque/(radians/second)
+                } = initializers;
+
                 if ( typeof bucket_ring_radius !== 'number' ||
                      bucket_ring_radius < this.constructor.bucket_ring_radius_min ||
                      bucket_ring_radius > this.constructor.bucket_ring_radius_max ) {
@@ -155,14 +157,21 @@ SOFTWARE.
                 this._wheel_friction         = initial_wheel_friction;
                 this._wheel_angle            = 0;
                 this._wheel_angular_velocity = 0;
-                this._buckets                = [];
+                this._t                      = 0;  // simulation time in seconds
 
+                this._buckets = [];
                 for (let i = 0; i < this._bucket_count; i++) {
                     this._buckets.push({
                         index: i,
-                        amount: 0,  // units of liquid
+                        amount: 0,  // volume_units of liquid
                     });
                 }
+
+                const interbucket_angle = 2*Math.PI/this._bucket_count;
+                this._bucket_radius = this._bucket_ring_radius*Math.sin(interbucket_angle/2);
+                this._wheel_outer_radius = this._bucket_ring_radius + this._bucket_radius/2;
+
+                this._render();
             }
 
             get bucket_ring_radius     (){ return this._bucket_ring_radius; }
@@ -173,6 +182,7 @@ SOFTWARE.
             get wheel_friction         (){ return this._wheel_friction; }
             get wheel_angle            (){ return this._wheel_angle; }
             get wheel_angular_velocity (){ return this._wheel_angular_velocity; }
+            get t                      (){ return this._t; }
 
             set inflow_rate (new_inflow_rate) {
                 if (typeof new_inflow_rate !== 'number' || new_inflow_rate < 0) {
@@ -198,6 +208,7 @@ SOFTWARE.
             reset() {
                 this._wheel_angle = 0;
                 this._wheel_angular_velocity = 0;
+                this._t = 0;
                 for (bucket of this._buckets) {
                     bucket.amount = 0;
                 }
@@ -205,12 +216,112 @@ SOFTWARE.
 
             step() {
                 //!!!
+                this._render();
             }
 
-            render() {
-                //!!!
+            _render() {
+this._wheel_angle = Math.PI/2 + 2*Math.PI/this._bucket_count/2;
+for (const bucket of this._buckets) {
+    bucket.amount = this._bucket_capacity*(bucket.index+1)/this._bucket_count;
+}
+                const { canvas_width, canvas_height } = this._establish_canvas();
+
+                const ctx = this._canvas.getContext('2d');
+                // set transform so that (0, 0) is in the center and positive is up
+                ctx.setTransform(1, 0, 0, 1, 0, 0);  // reset to identity
+                ctx.translate(canvas_width/2, canvas_height/2);
+                ctx.scale(1, -1);
+
+                const bg_gradient = ctx.createLinearGradient(0, 0, 0, canvas_height);
+                bg_gradient.addColorStop(0, '#202080');
+                bg_gradient.addColorStop(1, '#8060c0');
+                ctx.fillStyle = bg_gradient;
+                ctx.fillRect(-canvas_width/2, -canvas_height/2, canvas_width, canvas_height);
+
+                function arc(x, y, r, a0, a1) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, (a0 ?? 0), (a1 ?? 2*Math.PI));
+                    ctx.fill();
+                }
+
+                // draw wheel
+                ctx.fillStyle = '#ffff80';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 4;
+                arc(0, 0, this._wheel_outer_radius);
+                ctx.stroke();
+                // draw center hub
+                ctx.fillStyle = '#000000';
+                arc(0, 0, this._wheel_outer_radius/20);
+                // draw orientation indicator
+                const indicator_width = this._wheel_outer_radius/40;
+                const indicator_length = 5*indicator_width;
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineCap = 'round';
+                ctx.lineWidth = this._wheel_outer_radius/40;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(indicator_length*Math.cos(this._wheel_angle), indicator_length*Math.sin(this._wheel_angle));
+                ctx.stroke();
+
+                for (const bucket of this._buckets) {
+                    // draw bucket
+                    const a = this._wheel_angle + (bucket.index*2*Math.PI)/this._bucket_count;
+                    const x = this._bucket_ring_radius * Math.cos(a);
+                    const y = this._bucket_ring_radius * Math.sin(a);
+                    ctx.fillStyle = '#808080';
+                    ctx.strokeStyle = '#404040';
+                    ctx.lineWidth = 2;
+                    arc(x, y, this._bucket_radius, Math.PI, 2*Math.PI);
+                    ctx.stroke();
+
+                    // draw fluid
+                    const fill_ratio = bucket.amount / this._bucket_capacity;
+                    const fill_sector_angle = 2*Math.acos(1-fill_ratio);  // incorrect...
+                    ctx.fillStyle = '#00ffc0';
+                    arc(x, y, this._bucket_radius, 3*Math.PI/2-fill_sector_angle/2, 3*Math.PI/2+fill_sector_angle/2);
+                    ctx.stroke();
+                    // draw bucket hub
+                    ctx.fillStyle = '#000000';
+                    arc(x, y, this._bucket_radius/15);
+                }
             }
-        };
+
+            _establish_canvas() {
+                const max_radius = Math.max(
+                    this._wheel_outer_radius,
+                    this._bucket_ring_radius + this._bucket_radius,
+                );
+                const canvas_width  = 2*max_radius * 1.1;  // 10% margin around wheel
+                const canvas_height = canvas_width;
+
+                if (!this._canvas) {
+                    this._canvas_container = document.getElementById('canvas_container');
+                    if (!this._canvas_container && this._canvas_container.tagName !== 'DIV') {
+                        throw new Error('document does not contain a div element with id "canvas_container"');
+                    }
+
+                    this._canvas = document.createElement('canvas');
+                    this._canvas.id = 'canvas';
+                    this._canvas.width  = canvas_width;
+                    this._canvas.height = canvas_height;
+
+                    this._canvas_container.innerText = '';  // remove children
+                    this._canvas_container.appendChild(this._canvas);
+                }
+
+                return { canvas_width, canvas_height };
+            }
+        }
+
+        new Waterwheel({//!!!
+            bucket_ring_radius:          250,  // length_units
+            bucket_count:                 12,
+            bucket_capacity:             100,  // volume_units
+            initial_inflow_rate:         100,  // volume_units/second
+            initial_bucket_outflow_rate: 100,  // volume_units/second
+            initial_wheel_friction:        1,  // torque/(radians/second)
+        });
 
         const go_button    = document.getElementById('go');
         const pause_button = document.getElementById('pause');
