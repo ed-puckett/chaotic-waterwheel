@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+<!--
+
+MIT License
+
+Copyright (c) 2022 Ed Puckett
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-->
+    <style>
+        #README {
+            margin: 1rem 0 1rem;
+        }
+
+        #input {
+            width: 100%;
+        }
+
+        #info_display {
+            display: flex;
+            gap: 2rem;
+        }
+
+        #play_controls {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+        }
+
+        #controls {
+            width: fit-content;
+        }
+        #controls div * {
+            vertical-align: middle;
+        }
+
+        #adjustments {
+            display: grid;
+            grid-template-columns: max-content max-content;
+            gap: 0.5rem;
+        }
+        #adjustments label {
+            justify-self: end;
+        }
+
+        #config_display {
+            width: fit-content;
+            font-family: monospace;
+        }
+
+        .display {
+            margin-left: 0.1rem;
+            padding: 0 0.5rem;
+            background-color: #eee;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="README">
+        <a target="_blank" href="https://blackguard.github.io/ode-plotter/"> README</a>
+    </div>
+
+    <div id="play_controls">
+        <button id="go">Go</button>
+        <button id="pause" class="hidden">Pause</button>
+    </div>
+    <div id="info_display">
+        <div id="controls">
+            <div id="adjustments">
+            </div>
+        </div>
+        <div id="config_display"></div>
+    </div>
+    <div id="plot"></div>
+    <div id="output"></div>
+
+    <script>
+        const input_el  = document.getElementById('input');
+        const plot_el   = document.getElementById('plot');
+        const output_el = document.getElementById('output');
+
+        const go_button    = document.getElementById('go');
+        const pause_button = document.getElementById('pause');
+
+        function set_go_button_state(running) {
+            if (running) {
+                go_button.innerText = 'Stop';
+            } else {
+                go_button.innerText = 'Go';
+            }
+        }
+
+        function set_pause_button_state(paused, running) {
+            pause_button.innerText = paused ? 'Resume' : 'Pause';
+            if (running) {
+                pause_button.classList.remove('hidden');
+            } else {
+                pause_button.classList.add('hidden');
+            }
+        }
+        set_go_button_state(false);
+        set_pause_button_state(false, false);
+
+        go_button.focus();
+    </script>
+</body>
+</html>
