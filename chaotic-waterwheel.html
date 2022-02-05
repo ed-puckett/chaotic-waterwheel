@@ -111,8 +111,7 @@ SOFTWARE.
             static fluid_density = 1;  // mass_units/volume_unit
 
             static pixels_per_length_unit = 1;
-
-            static seconds_per_step = 0.01
+            static seconds_per_step       = 0.01
 
             static g = 1;  // length_units/second/second
 
@@ -171,6 +170,8 @@ SOFTWARE.
                 this._bucket_radius = this._bucket_ring_radius*Math.sin(interbucket_angle/2);
                 this._wheel_outer_radius = this._bucket_ring_radius + this._bucket_radius/2;
 
+                this._fluid_inlet_width = this._bucket_radius / 2;
+
                 this._render();
             }
 
@@ -215,12 +216,15 @@ SOFTWARE.
             }
 
             step() {
+                this._wheel_angle += this.constructor.seconds_per_step;
+                if (this._wheel_angle >= 2*Math.PI) {
+                    this._wheel_angle -= 2*Math.PI;
+                }
                 //!!!
                 this._render();
             }
 
             _render() {
-this._wheel_angle = Math.PI/2 + 2*Math.PI/this._bucket_count/2;
 for (const bucket of this._buckets) {
     bucket.amount = this._bucket_capacity*(bucket.index+1)/this._bucket_count;
 }
@@ -236,11 +240,18 @@ for (const bucket of this._buckets) {
                 bg_gradient.addColorStop(0, '#202080');
                 bg_gradient.addColorStop(1, '#8060c0');
                 ctx.fillStyle = bg_gradient;
-                ctx.fillRect(-canvas_width/2, -canvas_height/2, canvas_width, canvas_height);
+                ctx.fillRect(-canvas_width/2-1, -canvas_height/2-1, canvas_width+1, canvas_height+1);
+
+                const pplu = this.constructor.pixels_per_length_unit;
 
                 function arc(x, y, r, a0, a1) {
                     ctx.beginPath();
-                    ctx.arc(x, y, r, (a0 ?? 0), (a1 ?? 2*Math.PI));
+                    ctx.arc(
+                        x*pplu,
+                        y*pplu,
+                        r*pplu,
+                        (a0 ?? 0),
+                        (a1 ?? 2*Math.PI));
                     ctx.fill();
                 }
 
@@ -250,37 +261,61 @@ for (const bucket of this._buckets) {
                 ctx.lineWidth = 4;
                 arc(0, 0, this._wheel_outer_radius);
                 ctx.stroke();
+
                 // draw center hub
+                const wheel_hub_radius = this._wheel_outer_radius/20;
                 ctx.fillStyle = '#000000';
-                arc(0, 0, this._wheel_outer_radius/20);
+                arc(0, 0, wheel_hub_radius);
+
                 // draw orientation indicator
-                const indicator_width = this._wheel_outer_radius/40;
+                const indicator_width = wheel_hub_radius/2;
                 const indicator_length = 5*indicator_width;
                 ctx.strokeStyle = '#ff0000';
                 ctx.lineCap = 'round';
-                ctx.lineWidth = this._wheel_outer_radius/40;
+                ctx.lineWidth = this._wheel_outer_radius/40*pplu;
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
-                ctx.lineTo(indicator_length*Math.cos(this._wheel_angle), indicator_length*Math.sin(this._wheel_angle));
+                ctx.lineTo(
+                    indicator_length*Math.cos(this._wheel_angle)*pplu,
+                    indicator_length*Math.sin(this._wheel_angle)*pplu,
+                );
                 ctx.stroke();
+
+                const filling = this._buckets_being_filled();
+
+                // draw fluid inlet
+                const fluid_color = '#00ffc0';
+                ctx.fillStyle = fluid_color;
+                let fluid_left = -this._fluid_inlet_width/2;
+                for (const f of filling) {
+                    const fluid_width = this._fluid_inlet_width * f.fill_ratio;
+                    ctx.fillRect(  // x, y, w, h
+                        fluid_left*pplu,
+                        f.fill_stats.y*pplu,
+                        fluid_width*pplu,
+                        canvas_height/2 - f.fill_stats.y*pplu,
+                    );
+                    fluid_left += fluid_width;
+                }
 
                 for (const bucket of this._buckets) {
                     // draw bucket
-                    const a = this._wheel_angle + (bucket.index*2*Math.PI)/this._bucket_count;
+                    const a = this._bucket_angle(bucket);
                     const x = this._bucket_ring_radius * Math.cos(a);
                     const y = this._bucket_ring_radius * Math.sin(a);
                     ctx.fillStyle = '#808080';
                     ctx.strokeStyle = '#404040';
+                    ctx.lineCap = 'round';
                     ctx.lineWidth = 2;
                     arc(x, y, this._bucket_radius, Math.PI, 2*Math.PI);
                     ctx.stroke();
 
                     // draw fluid
-                    const fill_ratio = bucket.amount / this._bucket_capacity;
-                    const fill_sector_angle = 2*Math.acos(1-fill_ratio);  // incorrect...
-                    ctx.fillStyle = '#00ffc0';
-                    arc(x, y, this._bucket_radius, 3*Math.PI/2-fill_sector_angle/2, 3*Math.PI/2+fill_sector_angle/2);
+                    const fsa = this._bucket_fill_sector_angle(bucket);
+                    ctx.fillStyle = fluid_color;
+                    arc(x, y, this._bucket_radius, 3*Math.PI/2-fsa/2, 3*Math.PI/2+fsa/2);
                     ctx.stroke();
+
                     // draw bucket hub
                     ctx.fillStyle = '#000000';
                     arc(x, y, this._bucket_radius/15);
@@ -288,7 +323,7 @@ for (const bucket of this._buckets) {
             }
 
             _establish_canvas() {
-                const max_radius = Math.max(
+                const max_radius = this.constructor.pixels_per_length_unit * Math.max(
                     this._wheel_outer_radius,
                     this._bucket_ring_radius + this._bucket_radius,
                 );
@@ -312,16 +347,117 @@ for (const bucket of this._buckets) {
 
                 return { canvas_width, canvas_height };
             }
+
+            _bucket_angle(bucket) {
+                let a = this._wheel_angle + (bucket.index*2*Math.PI)/this._bucket_count;
+                if (a >= 2*Math.PI) {
+                    a -= 2*Math.PI;
+                }
+                return a;
+            }
+
+            // returns an array of one or two stats records for buckets being filled, sorted by leftmost-ness
+            _buckets_being_filled() {
+                let closest, closest_a;  // closest to PI/2
+                for (const bucket of this._buckets) {
+                    const a = this._bucket_angle(bucket);
+                    if (typeof closest_a === 'undefined' || Math.abs(a - Math.PI/2) < Math.abs(closest_a - Math.PI/2)) {
+                        closest = bucket;
+                        closest_a = a;
+                    }
+                }
+                const closest_fill_stats = this._bucket_fill_stats_for_angle(closest_a);
+
+                let closest_fill_ratio;
+                let other, other_fill_stats, other_fill_ratio;
+                if (closest_fill_stats.takes_all) {
+                    // no other
+                    closest_fill_ratio = 1;
+                } else {
+                    // there is an other
+                    if (closest_a > Math.PI/2) {
+                        // closest is on the left side
+                        closest_fill_ratio = (closest_fill_stats.extent1 - -this._fluid_inlet_width/2) / this._fluid_inlet_width;
+                        other = this._buckets[(closest.index + this._bucket_count-1) % this._bucket_count];  // previous bucket
+                    } else {
+                        // closest is on the right side
+                        closest_fill_ratio = (this._fluid_inlet_width/2 - closest_fill_stats.extent0) / this._fluid_inlet_width;
+                        other = this._buckets[(closest.index + 1) % this._bucket_count];  // next bucket
+                    }
+                    other_fill_stats = this._bucket_fill_stats_for_angle(this._bucket_angle(other));
+                    other_fill_ratio = (1 - closest_fill_ratio);
+                }
+
+                const results = [
+                    {
+                        bucket:     closest,
+                        fill_stats: closest_fill_stats,
+                        fill_ratio: closest_fill_ratio,
+                    },
+                ];
+                if (other) {
+                    results.push(
+                        {
+                            bucket:     other,
+                            fill_stats: other_fill_stats,
+                            fill_ratio: other_fill_ratio,
+                        },
+                    );
+                }
+                return results.sort((a, b) => (a.fill_stats.x - b.fill_stats.x));
+            }
+
+            _bucket_fill_stats_for_angle(a) {
+                const x = this._bucket_ring_radius*Math.cos(a);
+                const y = this._bucket_ring_radius*Math.sin(a);
+                const extent0 = x - this._bucket_radius;
+                const extent1 = x + this._bucket_radius;
+                const takes_all = ( extent0 <= -this._fluid_inlet_width/2 &&
+                                    extent1 >=  this._fluid_inlet_width/2 );
+                return { a, x, y, extent0, extent1, takes_all };
+            }
+
+            _bucket_fill_sector_angle(bucket) {
+                /* n = number of equal-sized sectors in a full circle
+                 * a = sector angle
+                 *
+                 * a = 2*PI/n
+                 *
+                 * AREA_OF_SECTOR = PI*r*r/n
+                 *                = a/2*r*r
+                 *
+                 * A = area of sector excluding isosceles triangle (just the outer curved part)
+                 *
+                 * A = (a/2 - sin(a/2)*cos(a/2))*r*r  // area of isosceles triangle = (r*sin(a/2) * r*cos(a/2) / 2) * 2
+                 *
+                 * Note: sin(2*x) = 2*sin(x)*cos(x)
+                 *
+                 * A = (a/2 - sin(a)/2)*r*r
+                 * A = (a - sin(a))/2*r*r
+                 *
+                 * Want to find: "a" where (a - sin(a)) = 2*A/(r*r)
+                 *
+                 * a - sin(a) = ...
+                 */
+
+                // for now, just make the level in the bucket be proportional
+                // to the maximum amount until I figure out how to invert a-sin(a)
+
+                const fill_ratio = bucket.amount / this._bucket_capacity;
+                const fill_sector_angle = 2*Math.acos(1-fill_ratio);  // incorrect...
+                return fill_sector_angle;
+            }
         }
 
-        new Waterwheel({//!!!
+        const ww = new Waterwheel({//!!!
             bucket_ring_radius:          250,  // length_units
-            bucket_count:                 12,
+            bucket_count:                12,
             bucket_capacity:             100,  // volume_units
             initial_inflow_rate:         100,  // volume_units/second
             initial_bucket_outflow_rate: 100,  // volume_units/second
             initial_wheel_friction:        1,  // torque/(radians/second)
         });
+        setInterval(() => ww.step(), 50);//!!!
 
         const go_button    = document.getElementById('go');
         const pause_button = document.getElementById('pause');
