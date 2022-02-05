@@ -80,7 +80,7 @@ SOFTWARE.
 </head>
 <body>
     <div id="README">
-        <a target="_blank" href="https://blackguard.github.io/ode-plotter/"> README</a>
+        <a target="_blank" href="https://blackguard.github.io/chaotic-waterwheel/"> README</a>
     </div>
 
     <div id="play_controls">
@@ -111,7 +111,6 @@ SOFTWARE.
             static fluid_density = 1;  // mass_units/volume_unit
 
             static pixels_per_length_unit = 1;
-            static seconds_per_step       = 0.01
 
             static g = 1;  // length_units/second/second
 
@@ -216,12 +215,18 @@ SOFTWARE.
             }
 
             step() {
-                this._wheel_angle += this.constructor.seconds_per_step;
-                if (this._wheel_angle >= 2*Math.PI) {
-                    this._wheel_angle -= 2*Math.PI;
-                }
-                //!!!
+                this._wheel_angle = this.constructor.normalize_angle(this._wheel_angle + 0.01);//!!!
                 this._render();
+            }
+
+            static normalize_angle(a) {
+                while (a < 0) {
+                    a += 2*Math.PI;
+                }
+                while (a >= 2*Math.PI) {
+                    a -= 2*Math.PI;
+                }
+                return a;
             }
 
             _render() {
@@ -349,11 +354,7 @@ for (const bucket of this._buckets) {
             }
 
             _bucket_angle(bucket) {
-                let a = this._wheel_angle + (bucket.index*2*Math.PI)/this._bucket_count;
-                if (a >= 2*Math.PI) {
-                    a -= 2*Math.PI;
-                }
-                return a;
+                return this.constructor.normalize_angle(this._wheel_angle + (bucket.index*2*Math.PI)/this._bucket_count);
             }
 
             // returns an array of one or two stats records for buckets being filled, sorted by leftmost-ness
@@ -418,7 +419,8 @@ for (const bucket of this._buckets) {
             }
 
             _bucket_fill_sector_angle(bucket) {
-                /* n = number of equal-sized sectors in a full circle
+                /*
+                 * n = number of equal-sized sectors in a full circle
                  * a = sector angle
                  *
                  * a = 2*PI/n
@@ -438,26 +440,98 @@ for (const bucket of this._buckets) {
                  * Want to find: "a" where (a - sin(a)) = 2*A/(r*r)
                  *
                  * a - sin(a) = ...
+                 *
+                 * ---
+                 *
+                 * Taylor series expansion of sin(x) around 0: a - x^3/3! + x^5/5! - ...
+                 *
+                 * a - sin(x) =~ x^3/6
+                 *
+                 * Af = fraction of area of semicircle
+                 *    = A / (PI*r*r/2)
+                 *    = (a - sin(a))/PI
+                 *
+                 * Af =~ a^3/6/PI
+                 *
+                 * So a =~ (6*PI*Af)^(1/3)
+                 *
+                 * ---
+                 *
+                 * > function f(x) { return x - Math.sin(x); }
+                 * undefined
+                 *
+                 * > function r2d(r) { return 180*r/Math.PI; }
+                 * undefined
+                 *
+                 * > function d2r(d) { return d*Math.PI/180; }
+                 * undefined
+                 *
+                 * > f(d2r(90))
+                 * 0.5707963267948966
+                 *
+                 * > d2r(90)
+                 * 1.5707963267948966
+                 *
+                 * > function t3f(x) { return x**3/6; }
+                 * undefined
+                 *
+                 * > t3f(d2r(90))
+                 * 0.6459640975062462
+                 *
+                 * > f(d2r(45))
+                 * 0.07829138221090082
+                 *
+                 * > t3f(d2r(45))
+                 * 0.08074551218828077
+                 *
+                 * > f(d2r(180))
+                 * 3.141592653589793
+                 *
+                 * > t3f(d2r(180))
+                 * 5.167712780049969
+                 *
+                 * > function t3Afinv(f) { return Math.pow(6*Math.PI*f, 1/3); }
+                 * undefined
+                 *
+                 * > r2d(t3Afinv(0.18))
+                 * 86.09551108707927
+                 *
+                 * > Af(d2r(120))
+                 * 0.39100221895577053
+                 *
+                 * > r2d(t3Afinv(0.39))
+                 * 111.40667409452297
+                 *
+                 * > Af(d2r(180))
+                 * 1
+                 *
+                 * > r2d(t3Afinv(1))
+                 * 152.4835543747355
+                 *
                  */
 
-                // for now, just make the level in the bucket be proportional
-                // to the maximum amount until I figure out how to invert a-sin(a)
+                // using the above approximation:
 
                 const fill_ratio = bucket.amount / this._bucket_capacity;
-                const fill_sector_angle = 2*Math.acos(1-fill_ratio);  // incorrect...
+                const fill_sector_angle = Math.pow(6*Math.PI*fill_ratio, 1/3);  // approximate
                 return fill_sector_angle;
             }
         }
 
         const ww = new Waterwheel({//!!!
             bucket_ring_radius:          250,  // length_units
-            bucket_count:                12,
+            bucket_count:                 20,
             bucket_capacity:             100,  // volume_units
             initial_inflow_rate:         100,  // volume_units/second
             initial_bucket_outflow_rate: 100,  // volume_units/second
             initial_wheel_friction:        1,  // torque/(radians/second)
         });
-        setInterval(() => ww.step(), 50);//!!!
+        function anim_step() {
+            ww.step();
+            setTimeout(() => window.requestAnimationFrame(anim_step), 100);
+        }
+        window.requestAnimationFrame(anim_step);
+//        setInterval(() => ww.step(), 50);//!!!
 
         const go_button    = document.getElementById('go');
         const pause_button = document.getElementById('pause');
